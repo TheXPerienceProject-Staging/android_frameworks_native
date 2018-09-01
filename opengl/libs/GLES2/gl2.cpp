@@ -61,11 +61,8 @@ using namespace android;
     #define CALL_GL_API_INTERNAL_CALL(_api, ...)                 \
         asm volatile(                                            \
             GET_TLS(r12)                                         \
-            "it    al                 \n"                        \
             "ldr   r12, [r12, %[tls]] \n"                        \
-            "it    al                 \n"                        \
             "cmp   r12, #0            \n"                        \
-            "it    ne                 \n"                        \
             "ldrne pc,  [r12, %[api]] \n"                        \
             :                                                    \
             : [tls] "J"(TLS_SLOT_OPENGL_API*4),                  \
