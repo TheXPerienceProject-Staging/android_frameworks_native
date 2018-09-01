@@ -43,12 +43,19 @@ namespace android {
     #define CALL_GL_EXTENSION_API(_api)                         \
          asm volatile(                                          \
             GET_TLS(r12)                                        \
+            "it    al                 \n"                       \
             "ldr   r12, [r12, %[tls]] \n"                       \
+            "it    al                 \n"                       \
             "cmp   r12, #0            \n"                       \
+            "it   ne                 \n"                       \
             "addne r12, %[api]        \n"                       \
+            "it   ne                 \n"                       \
             "ldrne r12, [r12, %[ext]] \n"                       \
+            "it   ne                 \n"                       \
             "cmpne r12, #0            \n"                       \
+            "it   ne                 \n"                       \
             "bxne  r12                \n"                       \
+            "it   al                 \n"                       \
             "bx    lr                 \n"                       \
             :                                                   \
             : [tls] "J"(TLS_SLOT_OPENGL_API*4),                 \
@@ -258,4 +265,3 @@ extern const __eglMustCastToProperFunctionPointerType gExtensionForwarders[MAX_N
 // ----------------------------------------------------------------------------
 }; // namespace android
 // ----------------------------------------------------------------------------
-

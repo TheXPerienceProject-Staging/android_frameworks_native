@@ -60,6 +60,7 @@ cc_defaults {
         "-Wall",
         "-Werror",
         "-Wno-unused-variable",
+        "-Wno-inline-asm",
     ],
     shared_libs: [
         // ***** DO NOT ADD NEW DEPENDENCIES HERE *****
@@ -96,6 +97,7 @@ cc_defaults {
         "-Wno-error=deprecated-register",
         "-Wno-error=unknown-attributes",
         "-Wno-unused-variable",
+        "-Wno-inline-asm",
     ],
     shared_libs: [
         // ***** DO NOT ADD NEW DEPENDENCIES HERE *****
@@ -156,7 +158,7 @@ cc_library_shared {
         "libEGL_getProcAddress",
         "libEGL_blobCache",
     ],
-    ldflags: ["-Wl,--exclude-libs=ALL"],
+    ldflags: ["-Wl,--exclude-libs=ALL,-Wno-inline-asm"],
     export_include_dirs: ["EGL/include"],
 }
 
@@ -177,7 +179,7 @@ cc_defaults {
             instruction_set: "arm",
 
             // TODO: This is to work around b/20093774. Remove after root cause is fixed
-            ldflags: ["-Wl,--hash-style,both"],
+            ldflags: ["-Wl,--hash-style,both,-Wno-inline-asm"],
         },
     },
     shared_libs: ["libEGL"],
