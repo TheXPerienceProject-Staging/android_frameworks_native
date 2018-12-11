@@ -654,7 +654,6 @@ private:
 
     void preComposition(nsecs_t refreshStartTime);
     void postComposition(nsecs_t refreshStartTime);
-    void forceResyncModel();
     void updateCompositorTiming(
             nsecs_t vsyncPhase, nsecs_t vsyncInterval, nsecs_t compositeTime,
             std::shared_ptr<FenceTime>& presentFenceTime);
@@ -834,7 +833,6 @@ private:
     DefaultKeyedVector< wp<IBinder>, sp<DisplayDevice> > mDisplays;
 
     // don't use a lock for these, we don't care
-    std::vector<nsecs_t> vsyncPeriod;
     int mDebugRegion;
     int mDebugDDMS;
     int mDebugDisableHWC;

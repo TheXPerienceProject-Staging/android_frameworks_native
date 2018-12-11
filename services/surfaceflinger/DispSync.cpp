@@ -519,8 +519,7 @@ void DispSync::setPeriod(nsecs_t period) {
     mPeriod = period;
     mPhase = 0;
     mReferenceTime = 0;
-    // Ignore recompute as mReferenceTime is zero.
-    // mThread->updateModel(mPeriod, mPhase, mReferenceTime);
+    mThread->updateModel(mPeriod, mPhase, mReferenceTime);
 }
 
 nsecs_t DispSync::getPeriod() {
