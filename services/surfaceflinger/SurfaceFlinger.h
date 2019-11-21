@@ -918,7 +918,7 @@ private:
     }
 
     void dumpAllLocked(const DumpArgs& args, std::string& result) const REQUIRES(mStateLock);
-
+    void dumpMini(std::string& result) const REQUIRES(mStateLock);
     void appendSfConfigString(std::string& result) const;
     void listLayersLocked(std::string& result) const;
     void dumpStatsLocked(const DumpArgs& args, std::string& result) const REQUIRES(mStateLock);
@@ -956,6 +956,7 @@ private:
       const char *name = "/data/misc/wmtrace/dumpsys.txt";
       bool running = false;
       bool noLimit = false;
+      bool fullDump = false;
       bool replaceAfterCommit = false;
       long int position = 0;
     } mFileDump;
