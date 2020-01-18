@@ -1614,7 +1614,13 @@ void SurfaceFlinger::run() {
 }
 
 nsecs_t SurfaceFlinger::getVsyncPeriod() const {
-    const auto displayId = getInternalDisplayIdLocked();
+    auto displayId = getInternalDisplayIdLocked();
+    if (mNextVsyncSource) {
+        displayId = mNextVsyncSource->getId();
+    } else if (mActiveVsyncSource) {
+        displayId = mActiveVsyncSource->getId();
+    }
+
     if (!displayId || !getHwComposer().isConnected(*displayId)) {
         return 0;
     }
@@ -1709,6 +1715,13 @@ void SurfaceFlinger::onHotplugReceived(int32_t sequenceId, hwc2_display_t hwcDis
     ConditionalLock lock(mStateLock, std::this_thread::get_id() != mMainThreadId);
 
     mPendingHotplugEvents.emplace_back(HotplugEvent{hwcDisplayId, connection});
+
+    if (connection != HWC2::Connection::Connected) {
+        const std::optional<DisplayIdentificationInfo> info =
+           getHwComposer().onHotplug(hwcDisplayId, connection);
+        mDisplaysList.remove(getDisplayDeviceLocked(mPhysicalDisplayTokens[info->id]));
+        mNextVsyncSource = getVsyncSource();
+    }
 
     if (std::this_thread::get_id() == mMainThreadId) {
         // Process all pending hot plug events immediately if we are on the main thread.
@@ -2396,9 +2409,13 @@ void SurfaceFlinger::postComposition()
 
     getBE().mDisplayTimeline.updateSignalTimes();
     mPreviousPresentFences[1] = mPreviousPresentFences[0];
-    mPreviousPresentFences[0] = mActiveVsyncSource
-            ? getHwComposer().getPresentFence(*mActiveVsyncSource->getId())
-            : Fence::NO_FENCE;
+
+    sp<DisplayDevice> vSyncSource = mNextVsyncSource;
+    if (mNextVsyncSource == NULL) {
+        vSyncSource = mActiveVsyncSource;
+    }
+    mPreviousPresentFences[0] = vSyncSource ?
+        getHwComposer().getPresentFence(*vSyncSource->getId()) : Fence::NO_FENCE;
     auto presentFenceTime = std::make_shared<FenceTime>(mPreviousPresentFences[0]);
     getBE().mDisplayTimeline.push(presentFenceTime);
 
@@ -2524,10 +2541,9 @@ void SurfaceFlinger::postComposition()
         // Disable SmoMo by passing empty layer stack in multiple display case
         if (mDisplays.size() == 1) {
             for (const auto& layer : displayDevice->getVisibleLayersSortedByZ()) {
-                smomo::SmomoLayerStats layerStats = {
-                    layer->getName().string(),
-                    layer->getSequence(),
-                };
+                smomo::SmomoLayerStats layerStats;
+                layerStats.id = layer->getSequence();
+                layerStats.name = layer->getName().string();
                 layers.push_back(layerStats);
             }
 
@@ -2730,6 +2746,8 @@ sp<DisplayDevice> SurfaceFlinger::getVsyncSource() {
 
 void SurfaceFlinger::updateVsyncSource()
             NO_THREAD_SAFETY_ANALYSIS {
+    Mutex::Autolock lock(mVsyncLock);
+    mNextVsyncSource = getVsyncSource();
     nsecs_t vsync = getVsyncPeriod();
 
     if (mNextVsyncSource == NULL) {
@@ -2742,6 +2760,7 @@ void SurfaceFlinger::updateVsyncSource()
     } else if ((mNextVsyncSource != NULL) &&
         (mActiveVsyncSource != NULL)) {
         // Switch vsync to the new source
+        mScheduler->disableHardwareVsync(true);
         mScheduler->resyncToHardwareVsync(true, vsync);
     }
 }
@@ -3053,10 +3072,8 @@ void SurfaceFlinger::processDisplayHotplugEventsLocked() {
                 mInterceptor->saveDisplayDeletion(state.sequenceId);
                 mCurrentState.displays.removeItemsAt(index);
             }
-            mDisplaysList.remove(getDisplayDeviceLocked(mPhysicalDisplayTokens[info->id]));
-            mNextVsyncSource = getVsyncSource();
-            updateVsyncSource();
             mPhysicalDisplayTokens.erase(info->id);
+            updateVsyncSource();
         }
 
         processDisplayChangesLocked();
@@ -4025,7 +4042,8 @@ bool SurfaceFlinger::doComposeSurfaces(const sp<DisplayDevice>& displayDevice,
                                               HWC2::DisplayCapability::SkipClientColorTransform);
 
         // Compute the global color transform matrix.
-        applyColorMatrix = !hasDeviceComposition && !skipClientColorTransform;
+        applyColorMatrix = !hasDeviceComposition && !skipClientColorTransform &&
+                           (displayDevice->isPrimary() || displayDevice->getIsDisplayBuiltInType());
         if (applyColorMatrix) {
             clientCompositionDisplay.colorTransform = displayState.colorTransformMat;
         }
@@ -5107,7 +5125,8 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, int 
                 mScheduler->onScreenAcquired(mAppConnectionHandle);
                 mScheduler->resyncToHardwareVsync(true, getVsyncPeriod());
             }
-        } else if (displayId == getInternalDisplayIdLocked()) {
+        } else if ((mPluggableVsyncPrioritized && (displayId != getInternalDisplayIdLocked())) ||
+                    displayId == getInternalDisplayIdLocked()) {
             updateVsyncSource();
         }
 
@@ -5405,12 +5424,11 @@ void SurfaceFlinger::dumpMemoryAllocations(bool dump)
         return;
     }
 
-    {
-       Mutex::Autolock lock(mLayerCountLock);
-       if (mNumLayers < 50) {
-           return;
-       }
+    if (mMemoryDump.mMemoryDumpCount--) {
+        return;
     }
+    mMemoryDump.mMemoryDumpCount = 300;
+
     std::string dumpsys;
     GraphicBufferAllocator& alloc(GraphicBufferAllocator::get());
     alloc.dump(dumpsys);
@@ -7161,11 +7179,20 @@ void SurfaceFlinger::setAllowedDisplayConfigsInternal(const sp<DisplayDevice>& d
         return;
     }
 
-    const auto allowedDisplayConfigs = DisplayConfigs(allowedConfigs.begin(),
-                                                      allowedConfigs.end());
-    if (allowedDisplayConfigs == mAllowedDisplayConfigs) {
-        return;
+    std::vector<int32_t> displayConfigs;
+    for (int i = 0; i < allowedConfigs.size(); i++) {
+        displayConfigs.push_back(allowedConfigs.at(i));
     }
+
+    // Update the allowed Display Configs.
+    mRefreshRateConfigs.getAllowedConfigs(getHwComposer().getConfigs(*display->getId()),
+                                          &displayConfigs);
+
+    const auto allowedDisplayConfigs = DisplayConfigs(displayConfigs.begin(), displayConfigs.end());
+
+    if (allowedDisplayConfigs == mAllowedDisplayConfigs) {
+		return;
+	}
 
     ALOGV("Updating allowed configs");
     mAllowedDisplayConfigs = std::move(allowedDisplayConfigs);

@@ -52,6 +52,10 @@
 #include "RenderArea.h"
 #include "SurfaceFlinger.h"
 #include "TransactionCompletedThread.h"
+
+#include "DisplayHardware/ComposerHal.h"
+#include "DisplayHardware/HWComposer.h"
+#include "RenderArea.h"
 #include <android/hardware/graphics/common/1.0/types.h>
 
 using namespace android::surfaceflinger;

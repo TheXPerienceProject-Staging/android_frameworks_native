@@ -137,11 +137,6 @@ public:
 
     void enableHardwareVsync();
     void disableHardwareVsync(bool makeUnavailable);
-    // Resyncs the scheduler to hardware vsync.
-    // If makeAvailable is true, then hardware vsync will be turned on.
-    // Otherwise, if hardware vsync is not already enabled then this method will
-    // no-op.
-    // The period is the vsync period from the current display configuration.
     void resyncToHardwareVsync(bool makeAvailable, nsecs_t period, bool force_resync = false);
     // Creates a callback for resyncing.
     ResyncCallback makeResyncCallback(GetVsyncPeriod&& getVsyncPeriod);
@@ -240,6 +235,10 @@ private:
     // handles various timer features to change the refresh rate.
     template <class T>
     void handleTimerStateChanged(T* currentState, T newState, bool eventOnContentDetection);
+    // Idle timer feature's function to change the refresh rate.
+    void timerChangeRefreshRate(IdleTimerState idleTimerState);
+    // Touch timer feature's function to change the refresh rate.
+    void touchChangeRefreshRate(TouchState touchState);
     // Calculate the new refresh rate type
     RefreshRateType calculateRefreshRateType() REQUIRES(mFeatureStateLock);
     // Acquires a lock and calls the ChangeRefreshRateCallback() with given parameters.
