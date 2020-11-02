@@ -447,6 +447,9 @@ SurfaceFlinger::SurfaceFlinger(Factory& factory) : SurfaceFlinger(factory, SkipI
     property_get("debug.sf.predict_hwc_composition_strategy", value, "1");
     mPredictCompositionStrategy = atoi(value);
 
+    property_get("ro.sf.force_light_brightness", value, "0");
+    mForceLightBrightness = atoi(value);
+
     property_get("debug.sf.treat_170m_as_sRGB", value, "0");
     mTreat170mAsSrgb = atoi(value);
 
@@ -1900,6 +1903,12 @@ status_t SurfaceFlinger::getDisplayBrightnessSupport(const sp<IBinder>& displayT
     if (!displayId) {
         return NAME_NOT_FOUND;
     }
+
+    if (mForceLightBrightness) {
+        *outSupport = false;
+        return NO_ERROR;
+    }
+
     *outSupport = getHwComposer().hasDisplayCapability(*displayId, DisplayCapability::BRIGHTNESS);
     return NO_ERROR;
 }
