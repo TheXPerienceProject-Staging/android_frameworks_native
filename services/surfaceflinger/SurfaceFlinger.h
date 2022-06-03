@@ -443,6 +443,7 @@ private:
     friend class RefreshRateOverlay;
     friend class RegionSamplingThread;
     friend class SurfaceTracing;
+    friend class LayerRenderArea;
 
     // For unit tests
     friend class TestableSurfaceFlinger;
@@ -901,7 +902,7 @@ private:
     // Check if unified draw supported
     void startUnifiedDraw();
     void InitComposerExtn();
-    void createSmomoInstance(const DisplayDeviceState& state);
+    void createSmomoInstance(const DisplayDeviceState& state) REQUIRES(mStateLock);
     void destroySmomoInstance(const sp<DisplayDevice>& display);
 
     // Returns whether a new buffer has been latched (see handlePageFlip())
@@ -1023,10 +1024,10 @@ private:
                                  const std::shared_ptr<renderengine::ExternalTexture>&,
                                  bool regionSampling, bool grayscale,
                                  const sp<IScreenCaptureListener>&);
-    status_t renderScreenImplLocked(const RenderArea&, TraverseLayersFunction,
-                                    const std::shared_ptr<renderengine::ExternalTexture>&,
-                                    bool canCaptureBlackoutContent, bool regionSampling,
-                                    bool grayscale, ScreenCaptureResults&);
+    status_t renderScreenImpl(const RenderArea&, TraverseLayersFunction,
+                              const std::shared_ptr<renderengine::ExternalTexture>&,
+                              bool canCaptureBlackoutContent, bool regionSampling,
+                              bool grayscale, ScreenCaptureResults&) EXCLUDES(mStateLock);
 
 
     bool canAllocateHwcDisplayIdForVDS(uint64_t usage);
@@ -1681,7 +1682,7 @@ private:
 
     void scheduleRegionSamplingThread();
     void notifyRegionSamplingThread();
-    void setRefreshRates(std::unique_ptr<scheduler::RefreshRateConfigs> &refreshRateConfigs);
+    void setRefreshRates(const sp<DisplayDevice>& display);
     void UpdateSmomoState();
     bool isRefreshRateOverlayEnabled() const REQUIRES(mStateLock) {
         return std::any_of(mDisplays.begin(), mDisplays.end(),
