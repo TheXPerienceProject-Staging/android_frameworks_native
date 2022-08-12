@@ -464,6 +464,9 @@ SurfaceFlinger::SurfaceFlinger(Factory& factory) : SurfaceFlinger(factory, SkipI
     property_get("debug.sf.defer_refresh_rate_when_off", value, "0");
     mDeferRefreshRateWhenOff = atoi(value);
 
+    property_get("ro.sf.force_hwc_brightness", value, "0");
+    mForceHwcBrightness = atoi(value);
+
     mIgnoreHwcPhysicalDisplayOrientation =
             base::GetBoolProperty("debug.sf.ignore_hwc_physical_display_orientation"s, false);
 
@@ -1951,7 +1954,10 @@ status_t SurfaceFlinger::getDisplayBrightnessSupport(const sp<IBinder>& displayT
     if (!displayId) {
         return NAME_NOT_FOUND;
     }
-    *outSupport = getHwComposer().hasDisplayCapability(*displayId, DisplayCapability::BRIGHTNESS);
+   // *outSupport = getHwComposer().hasDisplayCapability(*displayId, DisplayCapability::BRIGHTNESS);
+
+    *outSupport = mForceHwcBrightness ? true :
+            getHwComposer().hasDisplayCapability(*displayId, DisplayCapability::BRIGHTNESS);
     return NO_ERROR;
 }
 

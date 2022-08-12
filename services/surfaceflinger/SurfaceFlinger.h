@@ -1371,6 +1371,7 @@ private:
     bool mSetActiveModePending = false;
 
     bool mLumaSampling = true;
+    bool mForceHwcBrightness = false;
 
     bool mDeferRefreshRateWhenOff = false;
     std::optional<scheduler::FrameRateMode> mLastActiveMode GUARDED_BY(mStateLock);
