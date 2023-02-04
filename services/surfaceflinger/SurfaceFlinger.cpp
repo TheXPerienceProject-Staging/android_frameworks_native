@@ -2450,21 +2450,10 @@ nsecs_t SurfaceFlinger::getVsyncPeriodFromHWC() const {
     return 0;
 }
 
-sp<DisplayDevice> SurfaceFlinger::getCurrentVsyncSource() {
-    std::lock_guard<std::recursive_mutex> lockVsync(mVsyncLock);
-
-    if (mNextVsyncSource) {
-        return mNextVsyncSource;
-    } else if (mActiveVsyncSource) {
-        return mActiveVsyncSource;
-    }
-
-    return getDefaultDisplayDeviceLocked();
-}
-
 nsecs_t SurfaceFlinger::getVsyncPeriodFromHWCcb() {
     std::lock_guard<std::recursive_mutex> lockVsync(mVsyncLock);
 
+    Mutex::Autolock lock(mStateLock);
     auto display = getDefaultDisplayDeviceLocked();
     if (mNextVsyncSource) {
         display = mNextVsyncSource;
