@@ -2433,7 +2433,7 @@ bool SurfaceFlinger::commit(TimePoint frameTime, VsyncId vsyncId, TimePoint expe
     if (mQtiSFExtnIntf->qtiIsSmomoOptimalRefreshActive()) {
       lck.lock();
     }
-    mQtiSFExtnIntf->qtiOnVsync(expectedVsyncTime.ns());
+    //mQtiSFExtnIntf->qtiOnVsync(expectedVsyncTime.ns());
     /* QTI_END */
 
     mScheduledPresentTime = expectedVsyncTime;
@@ -2448,8 +2448,8 @@ bool SurfaceFlinger::commit(TimePoint frameTime, VsyncId vsyncId, TimePoint expe
                   mExpectedPresentTime == expectedVsyncTime ? "" : " (adjusted)");
 
     /* QTI_BEGIN */
-    mQtiSFExtnIntf->qtiUpdateFrameScheduler();
-    mQtiSFExtnIntf->qtiSyncToDisplayHardware();
+    //mQtiSFExtnIntf->qtiUpdateFrameScheduler();
+    //mQtiSFExtnIntf->qtiSyncToDisplayHardware();
     // TODO(rmedel): Handle locking for early wake up
     mQtiSFExtnIntf->qtiResetEarlyWakeUp();
     /* QTI_END */

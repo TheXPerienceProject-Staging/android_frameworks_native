@@ -96,7 +96,7 @@ public:
     /*
      * Methods that call FrameScheduler APIs.
      */
-    virtual void qtiUpdateFrameScheduler() = 0;
+    //virtual void qtiUpdateFrameScheduler() = 0;
 
     /*
      * Methods that call the IDisplayConfig APIs.
@@ -132,7 +132,7 @@ public:
     virtual void qtiDestroySmomoInstance(const sp<DisplayDevice>& display) = 0;
     virtual void qtiSetRefreshRates(PhysicalDisplayId displayId) = 0;
     virtual void qtiSetRefreshRateTo(int32_t refreshRate) = 0;
-    virtual void qtiSyncToDisplayHardware() = 0;
+    //virtual void qtiSyncToDisplayHardware() = 0;
     virtual void qtiUpdateSmomoState() = 0;
     virtual void qtiSetDisplayAnimating() = 0;
     virtual void qtiUpdateSmomoLayerInfo(sp<Layer> layer, int64_t desiredPresentTime,
