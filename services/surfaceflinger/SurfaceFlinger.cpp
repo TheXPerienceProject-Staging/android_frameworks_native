@@ -2215,10 +2215,11 @@ void SurfaceFlinger::setVsyncEnabled(PhysicalDisplayId id, bool enabled) {
             }
         }
 
+        /* QTI_BEGIN */
+        mQtiSFExtnIntf->qtiSetVsyncEnabledInternal(id, enabled);
+        /* QTI_END */
+
         ATRACE_FORMAT("%s (%d) for %" PRIu64 " (main thread)", whence, enabled, id.value);
-        if (const auto display = getDisplayDeviceLocked(id); display && display->isPoweredOn()) {
-            setHWCVsyncEnabled(id, enabled);
-        }
     }));
 }
 
@@ -3646,7 +3647,6 @@ void SurfaceFlinger::processDisplayAdded(const wp<IBinder>& displayToken,
         mQtiSFExtnIntf->qtiSetPowerModeOverrideConfig(display);
         mQtiSFExtnIntf->qtiUpdateDisplaysList(display, /*addDisplay*/ true);
         mQtiSFExtnIntf->qtiTryDrawMethod(display);
-
         /* QTI_END */
 
         if (mScheduler) {
@@ -3722,6 +3722,7 @@ void SurfaceFlinger::processDisplayChanged(const wp<IBinder>& displayToken,
         if (const auto display = getDisplayDeviceLocked(displayToken)) {
             /* QTI_BEGIN */
             mQtiSFExtnIntf->qtiUpdateDisplaysList(display, /*addDisplay*/ false);
+            mQtiSFExtnIntf->qtiUpdateNextVsyncSource();
             /* QTI_END */
 
             display->disconnect();
@@ -3744,6 +3745,8 @@ void SurfaceFlinger::processDisplayChanged(const wp<IBinder>& displayToken,
         if (currentState.physical) {
             const auto display = getDisplayDeviceLocked(displayToken);
             setPowerModeInternal(display, hal::PowerMode::ON);
+
+            mQtiSFExtnIntf->qtiUpdateVsyncSource();
 
             // TODO(b/175678251) Call a listener instead.
             if (currentState.physical->hwcDisplayId == getHwComposer().getPrimaryHwcDisplayId()) {
@@ -5804,6 +5807,17 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, hal:
         return;
     }
 
+    /* QTI_BEGIN */
+    bool qtiIsDummyDisplay = true;
+    bool qtiIsPluggablePrioritized = false;
+
+    mQtiSFExtnIntf->qtiUpdateActiveVsyncSource();
+    mQtiSFExtnIntf->qtiIsDummyDisplay(display);
+    qtiIsPluggablePrioritized = mQtiSFExtnIntf->qtiIsExtensionFeatureEnabled(
+            surfaceflingerextension::kPluggableVsyncPrioritized);
+
+    /* QTI_END */
+
     const bool isInternalDisplay = mPhysicalDisplays.get(displayId)
                                            .transform(&PhysicalDisplay::isInternal)
                                            .value_or(false);
@@ -5829,6 +5843,15 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, hal:
         // TODO(b/255635821): Remove the concept of active display.
         if (isInternalDisplay && (!activeDisplay || !activeDisplay->isPoweredOn())) {
             onActiveDisplayChangedLocked(activeDisplay.get(), *display);
+
+            // Force the device to do a HWresync after we turn on a display
+            mQtiSFExtnIntf->qtiUpdateVsyncSource();
+            mScheduler->resyncToHardwareVsync(displayId, true, refreshRate);
+        } else if ((qtiIsPluggablePrioritized && (displayId != getPrimaryDisplayIdLocked())) ||
+                   (isInternalDisplay && activeDisplay->isPoweredOn())) {
+            // if turning on a display that is powered off and active display is on
+            // must determine if this display should be the active display
+            mQtiSFExtnIntf->qtiUpdateActiveDisplayOnPowerOn(displayId, refreshRate);
         }
 
         if (displayId == mActiveDisplayId) {
@@ -5850,32 +5873,45 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, hal:
             setDesiredActiveMode({mLastActiveMode.value()}, true);
             mLastActiveMode = std::nullopt;
         }
-        if (displayId == mActiveDisplayId && mode != hal::PowerMode::DOZE_SUSPEND) {
-            setHWCVsyncEnabled(displayId,
-                               mScheduler->getVsyncSchedule(displayId)
-                                       ->getPendingHardwareVsyncState());
-            mScheduler->enableSyntheticVsync(false);
-            mScheduler->resyncToHardwareVsync(displayId, true /* allowToEnable */, refreshRate);
+        if (!qtiIsDummyDisplay) {
+            if ((qtiIsPluggablePrioritized && (displayId != getPrimaryDisplayIdLocked())) ||
+                displayId == getPrimaryDisplayIdLocked()) {
+                mQtiSFExtnIntf->qtiUpdateVsyncSource();
+            }
+        } else {
+            if (displayId == mActiveDisplayId && mode != hal::PowerMode::DOZE_SUSPEND) {
+                setHWCVsyncEnabled(displayId,
+                                   mScheduler->getVsyncSchedule(displayId)
+                                           ->getPendingHardwareVsyncState());
+                mScheduler->enableSyntheticVsync(false);
+                mScheduler->resyncToHardwareVsync(displayId, true /* allowToEnable */, refreshRate);
+            }
         }
 
         mVisibleRegionsDirty = true;
         scheduleComposite(FrameHint::kActive);
     } else if (mode == hal::PowerMode::OFF) {
         // Turn off the display
+        if (!qtiIsDummyDisplay) {
+            mQtiSFExtnIntf->qtiUpdateActiveDisplayOnPowerOff(displayId);
+            mQtiSFExtnIntf->qtiUpdateVsyncSource();
+            // Make sure HWVsync is disabled before turning off the display
+            setHWCVsyncEnabled(displayId, false);
+        } else {
+            if (displayId == mActiveDisplayId) {
+                if (setSchedFifo(false) != NO_ERROR) {
+                    ALOGW("Failed to set SCHED_OTHER after powering off active display: %s",
+                          strerror(errno));
+                }
+                if (setSchedAttr(false) != NO_ERROR) {
+                    ALOGW("Failed set uclamp.min after powering off active display: %s",
+                          strerror(errno));
+                }
 
-        if (displayId == mActiveDisplayId) {
-            if (setSchedFifo(false) != NO_ERROR) {
-                ALOGW("Failed to set SCHED_OTHER after powering off active display: %s",
-                      strerror(errno));
-            }
-            if (setSchedAttr(false) != NO_ERROR) {
-                ALOGW("Failed set uclamp.min after powering off active display: %s",
-                      strerror(errno));
-            }
-
-            if (*currentModeOpt != hal::PowerMode::DOZE_SUSPEND) {
-                mScheduler->disableHardwareVsync(displayId, true);
-                mScheduler->enableSyntheticVsync();
+                if (*currentModeOpt != hal::PowerMode::DOZE_SUSPEND) {
+                    mScheduler->disableHardwareVsync(displayId, true);
+                    mScheduler->enableSyntheticVsync();
+                }
             }
         }
 
@@ -5888,12 +5924,16 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, hal:
     } else if (mode == hal::PowerMode::DOZE || mode == hal::PowerMode::ON) {
         // Update display while dozing
         getHwComposer().setPowerMode(displayId, mode);
-        if (displayId == mActiveDisplayId && *currentModeOpt == hal::PowerMode::DOZE_SUSPEND) {
-            ALOGI("Force repainting for DOZE_SUSPEND -> DOZE or ON.");
-            mVisibleRegionsDirty = true;
-            scheduleRepaint();
-            mScheduler->enableSyntheticVsync(false);
-            mScheduler->resyncToHardwareVsync(displayId, true /* allowToEnable */, refreshRate);
+        if (!qtiIsDummyDisplay) {
+            mQtiSFExtnIntf->qtiUpdateVsyncSource();
+        } else {
+            if (displayId == mActiveDisplayId && *currentModeOpt == hal::PowerMode::DOZE_SUSPEND) {
+                ALOGI("Force repainting for DOZE_SUSPEND -> DOZE or ON.");
+                mVisibleRegionsDirty = true;
+                scheduleRepaint();
+                mScheduler->enableSyntheticVsync(false);
+                mScheduler->resyncToHardwareVsync(displayId, true /* allowToEnable */, refreshRate);
+            }
         }
     } else if (mode == hal::PowerMode::DOZE_SUSPEND) {
         // Leave display going to doze
@@ -5920,6 +5960,18 @@ void SurfaceFlinger::setPowerModeInternal(const sp<DisplayDevice>& display, hal:
     }
 
     /* QTI_BEGIN */
+    const sp<DisplayDevice> vsyncSource = mQtiSFExtnIntf->qtiGetVsyncSource();
+    struct sched_param param = {0};
+    if (vsyncSource != NULL) {
+        param.sched_priority = 1;
+        if (sched_setscheduler(0, SCHED_FIFO, &param) != 0) {
+            ALOGW("Couldn't set SCHED_FIFO on display on");
+        }
+    } else {
+        if (sched_setscheduler(0, SCHED_OTHER, &param) != 0) {
+            ALOGW("Couldn't set SCHED_OTHER on display off");
+        }
+    }
     mQtiSFExtnIntf->qtiSetEarlyWakeUpConfig(display, mode, isInternalDisplay);
     /* QTI_END */
 
