@@ -85,10 +85,10 @@ bool isInterceptorRegistrationOp(int op) {
 namespace {
 
     typedef struct _FEAS_BUFFER_PACKAGE {
-        __u32 pid;
+        uint64_t pid;
         union {
             __u32 start;
-            __u32 connectedAPI;
+            int32_t connectedAPI;
         };
         union {
             __u64 frame_time;
@@ -117,6 +117,11 @@ namespace {
         if (!mFEASDeviceOpen) {
             mFEASDevFd = open(FEAS_IOCTL_PATH, O_RDONLY);
             mFEASDeviceOpen = (mFEASDevFd >= 0);
+            if (mFEASDeviceOpen) {
+                ALOGD("FEAS", "FEAS device opened successfully");
+            } else {
+                ALOGD("FEAS", "Failed to open FEAS device at %s: %s", FEAS_IOCTL_PATH, strerror(errno));
+            }
         }
         return mFEASDeviceOpen;
     }
@@ -211,8 +216,9 @@ namespace {
 
     void feasConnect(const int32_t& api, const uint64_t& identifier) {
         FEAS_BUFFER_PACKAGE msg = {
-            .pid = getpid(),
+            .pid = static_cast<__u32>(getpid()),
             .connectedAPI = api,
+            .frame_id = 0, // Initialize frame_id
             .identifier = identifier
         };
         feasOperation(msg, FEAS_CONNECT);
@@ -220,7 +226,7 @@ namespace {
 
     void feasQueueBEG(const uint64_t& identifier) {
         FEAS_BUFFER_PACKAGE msg = {
-            .pid = getpid(),
+            .pid = static_cast<__u32>(getpid()),
             .start = 1,
             .identifier = identifier
         };
@@ -229,7 +235,7 @@ namespace {
 
     void feasDisconnect(const uint64_t& identifier) {
         FEAS_BUFFER_PACKAGE msg = {
-            .pid = getpid(),
+            .pid = static_cast<__u32>(getpid()),
             .identifier = identifier,
             .connectedAPI = 0
         };
